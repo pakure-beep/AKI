@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AKI Dialysis Risk Predictor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0f1e;font-family:'Georgia',serif;color:#e2e8f0;min-height:100vh}
+  input[type=number]{-moz-appearance:textfield}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none}
+  select option{background:#0a0f1e}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#0a0f1e}
+  ::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:3px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .fade-in{animation:fadeIn 0.4s ease forwards}
+  .streaming-cursor{animation:pulse 0.8s infinite}
+  .tab-btn{background:transparent;border:none;cursor:pointer;font-family:'Georgia',serif;letter-spacing:0.5px;transition:all 0.2s;padding:12px 20px;border-bottom:2px solid transparent}
+  .tab-btn:hover{color:#93c5fd}
+  .toggle-btn{cursor:pointer;border-radius:8px;border:1px solid #1e3a5f;background:#0f1e35;color:#64748b;font-family:'Georgia',serif;font-size:12px;padding:10px 12px;text-align:left;display:flex;align-items:center;gap:8px;transition:all 0.2s}
+  .toggle-btn.active{border-color:#3b82f6;background:#172554;color:#93c5fd}
+  .toggle-btn:hover{border-color:#2d5a9e}
+  .predict-btn{width:100%;padding:14px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);border:none;border-radius:10px;color:white;font-size:15px;font-family:'Georgia',serif;cursor:pointer;letter-spacing:1px;transition:all 0.2s;box-shadow:0 4px 20px rgba(99,102,241,0.3)}
+  .predict-btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(99,102,241,0.45)}
+  .predict-btn:disabled{background:#1e3a5f;cursor:not-allowed;transform:none;box-shadow:none}
+  .metric-card{background:#0a0f1e;border-radius:6px;padding:8px;border:1px solid #1e2d45;text-align:center}
+  .field-card{background:#0f1e35;border:1px solid #1e3a5f;border-radius:8px;padding:12px 14px}
+  .field-label{font-size:10px;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;font-family:'Georgia',serif}
+  .field-input{width:100%;background:#0a0f1e;border:1px solid #1e3a5f;color:#e2e8f0;padding:6px 8px;border-radius:6px;font-size:14px;font-family:'Georgia',serif}
+  .field-input:focus{outline:none;border-color:#2d5a9e}
+  .panel{background:#0f1e35;border:1px solid #1e3a5f;border-radius:12px;padding:20px}
+  .section-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-family:'Georgia',serif;font-weight:bold}
+  .disclaimer{padding:14px 28px;border-top:1px solid #0d1628;text-align:center;color:#334155;font-size:10px;letter-spacing:1px;font-family:'Georgia',serif}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:6px 10px;color:#475569;font-weight:normal;border-bottom:1px solid #1e3a5f;text-transform:uppercase;letter-spacing:0.5px;font-size:10px}
+  td{padding:7px 10px;color:#94a3b8;border-bottom:1px solid #0d1628;font-size:12px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useRef,useEffect}=React;
+const {BarChart,Bar,XAxis,YAxis,Tooltip,Cell,ResponsiveContainer}=Recharts;
+
+// ── Dataset ──────────────────────────────────────────────────────────────────
+const DATASET=[{age:33,sex:1,surgical:0,scr:1.0,crmdr:0.6,sepsis:1,ventilator:1,apache3:77,saps3:57,rifle:3,akin:3,dialysis:0},{age:56,sex:1,surgical:0,scr:0.7,crmdr:0.75,sepsis:0,ventilator:0,apache3:25,saps3:35,rifle:0,akin:0,dialysis:0},{age:87,sex:1,surgical:1,scr:1.1,crmdr:0.94,sepsis:0,ventilator:0,apache3:55,saps3:46,rifle:0,akin:0,dialysis:0},{age:42,sex:0,surgical:0,scr:0.6,crmdr:0.66,sepsis:1,ventilator:1,apache3:55,saps3:58,rifle:0,akin:0,dialysis:0},{age:77,sex:1,surgical:0,scr:2.0,crmdr:0.88,sepsis:0,ventilator:1,apache3:91,saps3:81,rifle:3,akin:3,dialysis:0},{age:60,sex:0,surgical:0,scr:1.5,crmdr:0.77,sepsis:1,ventilator:0,apache3:50,saps3:45,rifle:1,akin:1,dialysis:0},{age:39,sex:1,surgical:0,scr:2.2,crmdr:0.64,sepsis:1,ventilator:0,apache3:59,saps3:55,rifle:3,akin:3,dialysis:0},{age:55,sex:1,surgical:0,scr:0.7,crmdr:0.75,sepsis:0,ventilator:0,apache3:32,saps3:33,rifle:0,akin:0,dialysis:0},{age:40,sex:0,surgical:0,scr:0.7,crmdr:0.65,sepsis:1,ventilator:0,apache3:29,saps3:51,rifle:0,akin:0,dialysis:0},{age:38,sex:1,surgical:0,scr:0.5,crmdr:0.64,sepsis:1,ventilator:0,apache3:55,saps3:51,rifle:0,akin:0,dialysis:0},{age:62,sex:1,surgical:0,scr:1.85,crmdr:0.78,sepsis:1,ventilator:1,apache3:57,saps3:49,rifle:3,akin:3,dialysis:0},{age:74,sex:1,surgical:0,scr:1.0,crmdr:0.86,sepsis:0,ventilator:0,apache3:32,saps3:46,rifle:0,akin:0,dialysis:0},{age:48,sex:0,surgical:1,scr:0.6,crmdr:0.7,sepsis:1,ventilator:0,apache3:38,saps3:33,rifle:0,akin:0,dialysis:0},{age:87,sex:0,surgical:0,scr:0.8,crmdr:0.94,sepsis:0,ventilator:0,apache3:53,saps3:51,rifle:0,akin:0,dialysis:0},{age:40,sex:0,surgical:0,scr:0.5,crmdr:0.65,sepsis:0,ventilator:0,apache3:67,saps3:53,rifle:0,akin:0,dialysis:0},{age:37,sex:1,surgical:1,scr:1.1,crmdr:0.63,sepsis:0,ventilator:1,apache3:75,saps3:58,rifle:3,akin:3,dialysis:1},{age:62,sex:1,surgical:0,scr:1.0,crmdr:0.78,sepsis:0,ventilator:0,apache3:38,saps3:43,rifle:0,akin:0,dialysis:0},{age:43,sex:0,surgical:0,scr:0.8,crmdr:0.67,sepsis:1,ventilator:0,apache3:49,saps3:46,rifle:0,akin:0,dialysis:0},{age:28,sex:0,surgical:0,scr:0.6,crmdr:0.5,sepsis:0,ventilator:0,apache3:21,saps3:30,rifle:0,akin:0,dialysis:0},{age:39,sex:1,surgical:1,scr:0.8,crmdr:0.64,sepsis:0,ventilator:0,apache3:18,saps3:34,rifle:0,akin:0,dialysis:0},{age:60,sex:0,surgical:0,scr:0.7,crmdr:0.77,sepsis:1,ventilator:0,apache3:40,saps3:48,rifle:0,akin:0,dialysis:0},{age:45,sex:1,surgical:0,scr:1.0,crmdr:0.68,sepsis:1,ventilator:0,apache3:29,saps3:50,rifle:1,akin:1,dialysis:0},{age:58,sex:1,surgical:0,scr:1.1,crmdr:0.76,sepsis:0,ventilator:1,apache3:47,saps3:55,rifle:1,akin:1,dialysis:0},{age:53,sex:1,surgical:0,scr:4.4,crmdr:0.73,sepsis:1,ventilator:0,apache3:73,saps3:59,rifle:3,akin:3,dialysis:0},{age:30,sex:1,surgical:0,scr:0.5,crmdr:0.58,sepsis:1,ventilator:1,apache3:27,saps3:44,rifle:0,akin:0,dialysis:0},{age:18,sex:1,surgical:0,scr:0.9,crmdr:0.51,sepsis:1,ventilator:0,apache3:21,saps3:18,rifle:1,akin:1,dialysis:0},{age:58,sex:1,surgical:1,scr:3.1,crmdr:0.76,sepsis:0,ventilator:0,apache3:54,saps3:39,rifle:3,akin:3,dialysis:0},{age:43,sex:1,surgical:0,scr:1.2,crmdr:0.67,sepsis:1,ventilator:1,apache3:73,saps3:62,rifle:3,akin:3,dialysis:1},{age:82,sex:0,surgical:0,scr:1.0,crmdr:0.91,sepsis:1,ventilator:0,apache3:97,saps3:71,rifle:1,akin:1,dialysis:0},{age:29,sex:0,surgical:0,scr:2.6,crmdr:0.58,sepsis:1,ventilator:0,apache3:53,saps3:56,rifle:3,akin:3,dialysis:0},{age:44,sex:0,surgical:0,scr:0.5,crmdr:0.67,sepsis:0,ventilator:0,apache3:16,saps3:41,rifle:0,akin:0,dialysis:0},{age:74,sex:0,surgical:0,scr:1.0,crmdr:0.86,sepsis:0,ventilator:1,apache3:40,saps3:50,rifle:0,akin:0,dialysis:0},{age:37,sex:0,surgical:0,scr:1.0,crmdr:0.63,sepsis:1,ventilator:1,apache3:26,saps3:44,rifle:0,akin:1,dialysis:0},{age:32,sex:0,surgical:0,scr:0.9,crmdr:0.6,sepsis:1,ventilator:1,apache3:39,saps3:46,rifle:0,akin:1,dialysis:0},{age:57,sex:0,surgical:0,scr:0.6,crmdr:0.75,sepsis:1,ventilator:0,apache3:36,saps3:39,rifle:0,akin:0,dialysis:0},{age:32,sex:1,surgical:1,scr:0.9,crmdr:0.6,sepsis:1,ventilator:0,apache3:40,saps3:37,rifle:1,akin:1,dialysis:0},{age:49,sex:1,surgical:0,scr:3.7,crmdr:0.7,sepsis:1,ventilator:0,apache3:73,saps3:62,rifle:3,akin:3,dialysis:0},{age:51,sex:0,surgical:0,scr:0.6,crmdr:0.71,sepsis:1,ventilator:1,apache3:54,saps3:46,rifle:0,akin:0,dialysis:0},{age:59,sex:1,surgical:0,scr:0.9,crmdr:0.76,sepsis:1,ventilator:1,apache3:41,saps3:41,rifle:0,akin:0,dialysis:0},{age:56,sex:1,surgical:0,scr:0.8,crmdr:0.75,sepsis:0,ventilator:1,apache3:68,saps3:75,rifle:2,akin:2,dialysis:0},{age:26,sex:1,surgical:0,scr:0.8,crmdr:0.56,sepsis:1,ventilator:0,apache3:28,saps3:44,rifle:0,akin:0,dialysis:0},{age:71,sex:1,surgical:0,scr:2.0,crmdr:0.84,sepsis:1,ventilator:1,apache3:106,saps3:85,rifle:2,akin:2,dialysis:0},{age:49,sex:1,surgical:0,scr:1.6,crmdr:0.7,sepsis:1,ventilator:1,apache3:122,saps3:86,rifle:3,akin:3,dialysis:1},{age:72,sex:0,surgical:0,scr:0.7,crmdr:0.85,sepsis:0,ventilator:0,apache3:34,saps3:43,rifle:0,akin:0,dialysis:0},{age:68,sex:1,surgical:0,scr:0.8,crmdr:0.82,sepsis:0,ventilator:0,apache3:44,saps3:46,rifle:0,akin:0,dialysis:0},{age:27,sex:1,surgical:0,scr:0.9,crmdr:0.57,sepsis:0,ventilator:1,apache3:62,saps3:42,rifle:1,akin:1,dialysis:0},{age:84,sex:1,surgical:0,scr:1.1,crmdr:0.92,sepsis:1,ventilator:0,apache3:41,saps3:52,rifle:0,akin:0,dialysis:0},{age:44,sex:0,surgical:0,scr:1.0,crmdr:0.67,sepsis:1,ventilator:0,apache3:13,saps3:49,rifle:1,akin:1,dialysis:0},{age:23,sex:1,surgical:1,scr:1.2,crmdr:0.54,sepsis:0,ventilator:0,apache3:17,saps3:27,rifle:2,akin:2,dialysis:0},{age:88,sex:1,surgical:1,scr:1.6,crmdr:0.94,sepsis:0,ventilator:0,apache3:67,saps3:47,rifle:1,akin:1,dialysis:0},{age:78,sex:0,surgical:0,scr:1.1,crmdr:0.88,sepsis:0,ventilator:0,apache3:38,saps3:51,rifle:0,akin:0,dialysis:0},{age:19,sex:0,surgical:0,scr:0.5,crmdr:0.52,sepsis:0,ventilator:1,apache3:46,saps3:45,rifle:0,akin:0,dialysis:0},{age:65,sex:0,surgical:0,scr:1.8,crmdr:0.8,sepsis:1,ventilator:1,apache3:67,saps3:62,rifle:2,akin:2,dialysis:0},{age:58,sex:1,surgical:1,scr:2.2,crmdr:0.76,sepsis:1,ventilator:1,apache3:121,saps3:102,rifle:3,akin:3,dialysis:0},{age:62,sex:1,surgical:0,scr:1.2,crmdr:0.78,sepsis:1,ventilator:1,apache3:66,saps3:61,rifle:3,akin:3,dialysis:1},{age:48,sex:1,surgical:1,scr:1.7,crmdr:0.7,sepsis:0,ventilator:1,apache3:58,saps3:55,rifle:2,akin:2,dialysis:0},{age:68,sex:1,surgical:1,scr:1.1,crmdr:0.82,sepsis:0,ventilator:1,apache3:58,saps3:48,rifle:1,akin:1,dialysis:0},{age:81,sex:1,surgical:0,scr:0.8,crmdr:0.9,sepsis:0,ventilator:1,apache3:66,saps3:60,rifle:0,akin:0,dialysis:0},{age:67,sex:0,surgical:0,scr:1.2,crmdr:0.8,sepsis:1,ventilator:1,apache3:77,saps3:52,rifle:1,akin:1,dialysis:0},{age:45,sex:1,surgical:0,scr:3.0,crmdr:0.68,sepsis:1,ventilator:1,apache3:69,saps3:60,rifle:3,akin:3,dialysis:1},{age:59,sex:1,surgical:0,scr:0.7,crmdr:0.76,sepsis:0,ventilator:1,apache3:79,saps3:83,rifle:0,akin:0,dialysis:0},{age:57,sex:1,surgical:1,scr:2.1,crmdr:0.75,sepsis:1,ventilator:1,apache3:44,saps3:27,rifle:3,akin:3,dialysis:0},{age:55,sex:0,surgical:0,scr:0.7,crmdr:0.74,sepsis:0,ventilator:0,apache3:47,saps3:45,rifle:0,akin:0,dialysis:0},{age:68,sex:1,surgical:0,scr:1.1,crmdr:0.82,sepsis:1,ventilator:0,apache3:35,saps3:48,rifle:0,akin:1,dialysis:0},{age:25,sex:1,surgical:1,scr:0.9,crmdr:0.55,sepsis:0,ventilator:0,apache3:31,saps3:21,rifle:1,akin:1,dialysis:0},{age:73,sex:0,surgical:0,scr:0.7,crmdr:0.85,sepsis:1,ventilator:1,apache3:78,saps3:66,rifle:3,akin:3,dialysis:0},{age:33,sex:0,surgical:0,scr:0.7,crmdr:0.6,sepsis:1,ventilator:1,apache3:49,saps3:46,rifle:0,akin:0,dialysis:0},{age:58,sex:0,surgical:0,scr:2.1,crmdr:0.76,sepsis:1,ventilator:0,apache3:51,saps3:41,rifle:2,akin:2,dialysis:0},{age:55,sex:1,surgical:1,scr:0.8,crmdr:0.74,sepsis:0,ventilator:1,apache3:35,saps3:43,rifle:0,akin:0,dialysis:0},{age:65,sex:1,surgical:0,scr:0.7,crmdr:0.8,sepsis:1,ventilator:1,apache3:74,saps3:73,rifle:0,akin:0,dialysis:0},{age:54,sex:1,surgical:0,scr:1.0,crmdr:0.73,sepsis:0,ventilator:0,apache3:23,saps3:42,rifle:1,akin:1,dialysis:0},{age:27,sex:1,surgical:0,scr:0.8,crmdr:0.57,sepsis:1,ventilator:0,apache3:12,saps3:35,rifle:0,akin:0,dialysis:0},{age:37,sex:1,surgical:0,scr:1.0,crmdr:0.63,sepsis:1,ventilator:1,apache3:76,saps3:58,rifle:3,akin:3,dialysis:1},{age:47,sex:0,surgical:0,scr:0.7,crmdr:0.69,sepsis:0,ventilator:0,apache3:21,saps3:47,rifle:0,akin:0,dialysis:0},{age:38,sex:1,surgical:0,scr:0.8,crmdr:0.63,sepsis:0,ventilator:0,apache3:49,saps3:53,rifle:0,akin:0,dialysis:0},{age:37,sex:1,surgical:0,scr:1.7,crmdr:0.63,sepsis:1,ventilator:0,apache3:49,saps3:52,rifle:2,akin:2,dialysis:0},{age:49,sex:1,surgical:0,scr:1.4,crmdr:0.7,sepsis:1,ventilator:0,apache3:25,saps3:33,rifle:2,akin:2,dialysis:0},{age:60,sex:1,surgical:0,scr:0.7,crmdr:0.77,sepsis:1,ventilator:1,apache3:72,saps3:44,rifle:2,akin:2,dialysis:0},{age:60,sex:1,surgical:0,scr:0.7,crmdr:0.77,sepsis:1,ventilator:0,apache3:49,saps3:37,rifle:0,akin:0,dialysis:0},{age:47,sex:1,surgical:0,scr:2.0,crmdr:0.69,sepsis:1,ventilator:0,apache3:40,saps3:43,rifle:3,akin:3,dialysis:0},{age:33,sex:0,surgical:1,scr:0.6,crmdr:0.6,sepsis:0,ventilator:0,apache3:3,saps3:15,rifle:0,akin:0,dialysis:0},{age:41,sex:1,surgical:0,scr:1.0,crmdr:0.65,sepsis:0,ventilator:1,apache3:38,saps3:37,rifle:1,akin:1,dialysis:0},{age:44,sex:1,surgical:0,scr:1.2,crmdr:0.67,sepsis:0,ventilator:0,apache3:7,saps3:36,rifle:1,akin:1,dialysis:0},{age:51,sex:0,surgical:0,scr:1.3,crmdr:0.7,sepsis:1,ventilator:1,apache3:71,saps3:63,rifle:3,akin:3,dialysis:1},{age:59,sex:1,surgical:0,scr:1.0,crmdr:0.76,sepsis:0,ventilator:0,apache3:20,saps3:41,rifle:0,akin:0,dialysis:0},{age:41,sex:0,surgical:0,scr:0.6,crmdr:0.65,sepsis:1,ventilator:1,apache3:52,saps3:51,rifle:1,akin:1,dialysis:0},{age:42,sex:1,surgical:1,scr:1.5,crmdr:0.66,sepsis:0,ventilator:1,apache3:42,saps3:29,rifle:2,akin:2,dialysis:0},{age:65,sex:1,surgical:1,scr:2.6,crmdr:0.8,sepsis:0,ventilator:1,apache3:59,saps3:34,rifle:3,akin:3,dialysis:0},{age:54,sex:1,surgical:0,scr:0.6,crmdr:0.73,sepsis:1,ventilator:0,apache3:73,saps3:57,rifle:0,akin:0,dialysis:0},{age:72,sex:0,surgical:1,scr:0.6,crmdr:0.85,sepsis:0,ventilator:0,apache3:35,saps3:45,rifle:0,akin:0,dialysis:0},{age:27,sex:0,surgical:1,scr:0.7,crmdr:0.57,sepsis:1,ventilator:1,apache3:67,saps3:63,rifle:0,akin:0,dialysis:0},{age:58,sex:1,surgical:1,scr:0.8,crmdr:0.76,sepsis:1,ventilator:0,apache3:36,saps3:40,rifle:0,akin:0,dialysis:0},{age:59,sex:0,surgical:0,scr:0.6,crmdr:0.76,sepsis:0,ventilator:1,apache3:30,saps3:57,rifle:0,akin:0,dialysis:1},{age:65,sex:1,surgical:0,scr:7.1,crmdr:0.8,sepsis:1,ventilator:1,apache3:121,saps3:72,rifle:3,akin:3,dialysis:1},{age:22,sex:1,surgical:0,scr:0.9,crmdr:0.53,sepsis:1,ventilator:1,apache3:20,saps3:30,rifle:1,akin:1,dialysis:0},{age:24,sex:0,surgical:1,scr:0.7,crmdr:0.55,sepsis:1,ventilator:1,apache3:52,saps3:63,rifle:1,akin:1,dialysis:0},{age:54,sex:1,surgical:0,scr:0.7,crmdr:0.73,sepsis:1,ventilator:1,apache3:94,saps3:58,rifle:0,akin:0,dialysis:0},{age:40,sex:0,surgical:0,scr:1.0,crmdr:0.65,sepsis:0,ventilator:0,apache3:40,saps3:51,rifle:1,akin:1,dialysis:0},{age:81,sex:1,surgical:0,scr:4.1,crmdr:0.9,sepsis:1,ventilator:1,apache3:99,saps3:67,rifle:3,akin:3,dialysis:1},{age:60,sex:1,surgical:0,scr:1.1,crmdr:0.77,sepsis:1,ventilator:1,apache3:70,saps3:57,rifle:0,akin:0,dialysis:0},{age:60,sex:1,surgical:0,scr:1.2,crmdr:0.77,sepsis:1,ventilator:1,apache3:99,saps3:89,rifle:3,akin:3,dialysis:0},{age:54,sex:0,surgical:1,scr:0.7,crmdr:0.73,sepsis:1,ventilator:0,apache3:23,saps3:40,rifle:0,akin:0,dialysis:0},{age:69,sex:0,surgical:0,scr:0.5,crmdr:0.83,sepsis:0,ventilator:0,apache3:40,saps3:43,rifle:0,akin:0,dialysis:0},{age:64,sex:1,surgical:0,scr:1.5,crmdr:0.8,sepsis:1,ventilator:1,apache3:85,saps3:70,rifle:1,akin:1,dialysis:0},{age:49,sex:1,surgical:0,scr:3.6,crmdr:0.7,sepsis:1,ventilator:1,apache3:84,saps3:65,rifle:3,akin:3,dialysis:1},{age:63,sex:0,surgical:0,scr:0.8,crmdr:0.79,sepsis:0,ventilator:1,apache3:80,saps3:64,rifle:0,akin:0,dialysis:0},{age:42,sex:1,surgical:1,scr:0.8,crmdr:0.66,sepsis:1,ventilator:1,apache3:40,saps3:44,rifle:0,akin:0,dialysis:0},{age:26,sex:0,surgical:0,scr:0.7,crmdr:0.56,sepsis:0,ventilator:0,apache3:19,saps3:30,rifle:0,akin:0,dialysis:0},{age:49,sex:1,surgical:0,scr:1.0,crmdr:0.7,sepsis:0,ventilator:1,apache3:47,saps3:49,rifle:0,akin:1,dialysis:0},{age:46,sex:1,surgical:0,scr:1.4,crmdr:0.68,sepsis:1,ventilator:1,apache3:26,saps3:37,rifle:2,akin:2,dialysis:0},{age:52,sex:0,surgical:0,scr:0.6,crmdr:0.72,sepsis:0,ventilator:0,apache3:18,saps3:46,rifle:0,akin:0,dialysis:0},{age:42,sex:0,surgical:1,scr:0.6,crmdr:0.66,sepsis:0,ventilator:0,apache3:6,saps3:34,rifle:0,akin:0,dialysis:0},{age:47,sex:1,surgical:1,scr:0.7,crmdr:0.69,sepsis:0,ventilator:1,apache3:15,saps3:43,rifle:0,akin:0,dialysis:0},{age:47,sex:1,surgical:1,scr:0.7,crmdr:0.69,sepsis:0,ventilator:1,apache3:15,saps3:43,rifle:0,akin:0,dialysis:0},{age:84,sex:0,surgical:0,scr:0.5,crmdr:0.92,sepsis:1,ventilator:1,apache3:50,saps3:63,rifle:3,akin:3,dialysis:0},{age:79,sex:1,surgical:0,scr:2.0,crmdr:0.89,sepsis:1,ventilator:1,apache3:78,saps3:66,rifle:2,akin:2,dialysis:0},{age:16,sex:0,surgical:0,scr:3.5,crmdr:0.5,sepsis:1,ventilator:1,apache3:100,saps3:65,rifle:3,akin:3,dialysis:1},{age:75,sex:1,surgical:0,scr:2.6,crmdr:0.86,sepsis:1,ventilator:0,apache3:76,saps3:75,rifle:3,akin:3,dialysis:0},{age:49,sex:1,surgical:0,scr:1.0,crmdr:0.7,sepsis:0,ventilator:0,apache3:35,saps3:46,rifle:0,akin:1,dialysis:0},{age:74,sex:1,surgical:0,scr:0.5,crmdr:0.86,sepsis:1,ventilator:1,apache3:57,saps3:54,rifle:0,akin:0,dialysis:0},{age:28,sex:0,surgical:1,scr:0.7,crmdr:0.56,sepsis:0,ventilator:0,apache3:17,saps3:24,rifle:0,akin:0,dialysis:0},{age:49,sex:1,surgical:0,scr:1.1,crmdr:0.7,sepsis:1,ventilator:1,apache3:81,saps3:63,rifle:1,akin:1,dialysis:0},{age:28,sex:1,surgical:1,scr:0.6,crmdr:0.57,sepsis:1,ventilator:1,apache3:29,saps3:39,rifle:0,akin:0,dialysis:0},{age:21,sex:0,surgical:0,scr:0.8,crmdr:0.55,sepsis:0,ventilator:0,apache3:27,saps3:40,rifle:1,akin:1,dialysis:0},{age:50,sex:0,surgical:1,scr:1.5,crmdr:0.7,sepsis:1,ventilator:1,apache3:66,saps3:51,rifle:2,akin:2,dialysis:0},{age:75,sex:1,surgical:0,scr:1.0,crmdr:0.86,sepsis:0,ventilator:0,apache3:50,saps3:46,rifle:0,akin:0,dialysis:0},{age:32,sex:1,surgical:0,scr:0.8,crmdr:0.6,sepsis:1,ventilator:0,apache3:20,saps3:34,rifle:0,akin:0,dialysis:0},{age:68,sex:1,surgical:0,scr:1.8,crmdr:0.82,sepsis:1,ventilator:0,apache3:64,saps3:52,rifle:2,akin:2,dialysis:0},{age:18,sex:0,surgical:0,scr:0.7,crmdr:0.5,sepsis:0,ventilator:0,apache3:18,saps3:42,rifle:0,akin:0,dialysis:0},{age:27,sex:0,surgical:0,scr:0.6,crmdr:0.56,sepsis:1,ventilator:0,apache3:15,saps3:42,rifle:0,akin:0,dialysis:0},{age:29,sex:0,surgical:0,scr:0.7,crmdr:0.57,sepsis:0,ventilator:0,apache3:20,saps3:27,rifle:0,akin:0,dialysis:0},{age:54,sex:0,surgical:1,scr:1.6,crmdr:0.73,sepsis:0,ventilator:1,apache3:35,saps3:38,rifle:2,akin:2,dialysis:0},{age:46,sex:1,surgical:0,scr:0.7,crmdr:0.69,sepsis:0,ventilator:0,apache3:30,saps3:41,rifle:0,akin:0,dialysis:0},{age:82,sex:0,surgical:1,scr:1.5,crmdr:0.9,sepsis:0,ventilator:0,apache3:62,saps3:48,rifle:1,akin:1,dialysis:0},{age:25,sex:0,surgical:1,scr:0.9,crmdr:0.55,sepsis:1,ventilator:0,apache3:21,saps3:31,rifle:1,akin:1,dialysis:0},{age:73,sex:0,surgical:0,scr:1.4,crmdr:0.85,sepsis:0,ventilator:0,apache3:66,saps3:52,rifle:1,akin:1,dialysis:0},{age:56,sex:0,surgical:0,scr:0.8,crmdr:0.75,sepsis:0,ventilator:1,apache3:30,saps3:37,rifle:0,akin:0,dialysis:0},{age:61,sex:1,surgical:1,scr:1.4,crmdr:0.77,sepsis:0,ventilator:0,apache3:39,saps3:39,rifle:1,akin:1,dialysis:0},{age:30,sex:0,surgical:0,scr:0.9,crmdr:0.58,sepsis:0,ventilator:0,apache3:29,saps3:42,rifle:1,akin:1,dialysis:0},{age:76,sex:0,surgical:0,scr:2.8,crmdr:0.86,sepsis:1,ventilator:1,apache3:80,saps3:65,rifle:3,akin:3,dialysis:0},{age:23,sex:0,surgical:0,scr:0.6,crmdr:0.6,sepsis:1,ventilator:1,apache3:40,saps3:37,rifle:1,akin:1,dialysis:0},{age:67,sex:1,surgical:0,scr:0.7,crmdr:0.8,sepsis:0,ventilator:0,apache3:33,saps3:35,rifle:0,akin:0,dialysis:0},{age:87,sex:1,surgical:0,scr:1.1,crmdr:0.94,sepsis:1,ventilator:1,apache3:85,saps3:89,rifle:1,akin:1,dialysis:0},{age:56,sex:1,surgical:0,scr:1.4,crmdr:0.75,sepsis:1,ventilator:0,apache3:42,saps3:43,rifle:1,akin:1,dialysis:0},{age:67,sex:0,surgical:1,scr:1.1,crmdr:0.8,sepsis:1,ventilator:0,apache3:26,saps3:28,rifle:0,akin:1,dialysis:0},{age:32,sex:1,surgical:1,scr:0.7,crmdr:0.6,sepsis:0,ventilator:0,apache3:24,saps3:33,rifle:0,akin:0,dialysis:0},{age:34,sex:1,surgical:0,scr:0.6,crmdr:0.6,sepsis:0,ventilator:1,apache3:38,saps3:41,rifle:0,akin:0,dialysis:0},{age:16,sex:0,surgical:0,scr:0.6,crmdr:0.5,sepsis:1,ventilator:0,apache3:40,saps3:34,rifle:0,akin:0,dialysis:0},{age:57,sex:1,surgical:1,scr:1.1,crmdr:0.75,sepsis:1,ventilator:1,apache3:80,saps3:65,rifle:0,akin:1,dialysis:0},{age:56,sex:1,surgical:0,scr:1.1,crmdr:0.75,sepsis:0,ventilator:1,apache3:67,saps3:67,rifle:1,akin:1,dialysis:0},{age:51,sex:0,surgical:0,scr:3.4,crmdr:0.71,sepsis:1,ventilator:1,apache3:72,saps3:54,rifle:3,akin:3,dialysis:0}];
+
+// ── ML Model ─────────────────────────────────────────────────────────────────
+function trainModel(data){
+  const features=["age","sex","surgical","scr","crmdr","sepsis","ventilator","apache3","saps3","rifle","akin"];
+  const stats={};
+  features.forEach(f=>{
+    const v=data.map(d=>d[f]);
+    const mean=v.reduce((a,b)=>a+b,0)/v.length;
+    const std=Math.sqrt(v.reduce((a,b)=>a+(b-mean)**2,0)/v.length)||1;
+    stats[f]={mean,std};
+  });
+  const norm=(val,f)=>(val-stats[f].mean)/stats[f].std;
+  let W=new Array(features.length).fill(0),bias=0;
+  const sig=z=>1/(1+Math.exp(-Math.max(-500,Math.min(500,z))));
+  for(let e=0;e<2000;e++){
+    let dW=new Array(features.length).fill(0),dB=0;
+    data.forEach(d=>{
+      const x=features.map(f=>norm(d[f],f));
+      const z=x.reduce((s,xi,i)=>s+xi*W[i],0)+bias;
+      const err=sig(z)-d.dialysis;
+      x.forEach((xi,i)=>dW[i]+=err*xi);
+      dB+=err;
+    });
+    W=W.map((w,i)=>w-0.05*dW[i]/data.length);
+    bias-=0.05*dB/data.length;
+  }
+  const predict=inp=>{
+    const x=features.map(f=>norm(inp[f]||0,f));
+    const z=x.reduce((s,xi,i)=>s+xi*W[i],0)+bias;
+    return sig(z);
+  };
+  const totalW=W.reduce((s,w)=>s+Math.abs(w),0);
+  const importance=features.map((f,i)=>({feature:f,importance:Math.abs(W[i])/totalW*100,positive:W[i]>0})).sort((a,b)=>b.importance-a.importance);
+  const preds=data.map(d=>({score:predict(d),label:d.dialysis}));
+  preds.sort((a,b)=>b.score-a.score);
+  const pos=preds.filter(p=>p.label===1).length,neg=preds.length-pos;
+  let tp=0,fp=0,auc=0,pTp=0,pFp=0;
+  preds.forEach(p=>{if(p.label===1)tp++;else{fp++;auc+=(tp+pTp)/2*(fp-pFp);pTp=tp;pFp=fp;}});
+  auc/=(pos*neg);
+  let TP=0,TN=0,FP=0,FN=0;
+  preds.forEach(p=>{const pr=p.score>=0.5?1:0;if(pr===1&&p.label===1)TP++;else if(pr===0&&p.label===0)TN++;else if(pr===1)FP++;else FN++;});
+  const sens=TP/(TP+FN)||0,spec=TN/(TN+FP)||0,ppv=TP/(TP+FP)||0,npv=TN/(TN+FN)||0;
+  return{predict,importance,auc,metrics:{sens,spec,ppv,npv,TP,TN,FP,FN}};
+}
+const MODEL=trainModel(DATASET);
+
+const FEAT_LABELS={age:"Age (yrs)",sex:"Male Sex",surgical:"Surgical Adm.",scr:"Serum Creatinine",crmdr:"CrMDRD (eGFR)",sepsis:"Sepsis",ventilator:"Mech. Ventilation",apache3:"APACHE III",saps3:"SAPS 3",rifle:"RIFLE (0–3)",akin:"AKIN (0–3)"};
+const riskColor=p=>p<0.2?"#22c55e":p<0.5?"#f59e0b":"#ef4444";
+const riskLabel=p=>p<0.2?"LOW":p<0.5?"MODERATE":"HIGH";
+
+// ── Gauge ─────────────────────────────────────────────────────────────────────
+function Gauge({prob}){
+  const c=riskColor(prob),pct=(prob*100).toFixed(1);
+  const r=70,cx=90,cy=88;
+  const total=Math.PI*r,dash=prob*total;
+  return React.createElement('svg',{width:180,height:100,viewBox:"0 0 180 100"},
+    React.createElement('path',{d:`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`,fill:"none",stroke:"#1e3a5f",strokeWidth:14,strokeLinecap:"round"}),
+    React.createElement('path',{d:`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`,fill:"none",stroke:c,strokeWidth:14,strokeLinecap:"round",strokeDasharray:`${dash} ${total}`,style:{transition:"stroke-dasharray 0.8s ease"}}),
+    React.createElement('text',{x:cx,y:cy-4,textAnchor:"middle",fill:c,fontSize:22,fontWeight:"bold",fontFamily:"Georgia"},[pct,"%"].join("")),
+    React.createElement('text',{x:cx,y:cy+14,textAnchor:"middle",fill:"#64748b",fontSize:9,fontFamily:"Georgia"},"DIALYSIS RISK")
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+function App(){
+  const [inputs,setInputs]=useState({age:55,sex:1,surgical:0,scr:1.2,crmdr:0.72,sepsis:1,ventilator:0,apache3:55,saps3:50,rifle:1,akin:1});
+  const [prob,setProb]=useState(null);
+  const [tab,setTab]=useState("predict");
+  const [loading,setLoading]=useState(false);
+  const [aiText,setAiText]=useState("");
+  const [streaming,setStreaming]=useState(false);
+  const [provider,setProvider]=useState("anthropic");
+  const [apiKey,setApiKey]=useState("");
+  const [autoAI,setAutoAI]=useState(false);
+  const autoTimer=useRef(null);
+
+  const set=(k,v)=>setInputs(p=>({...p,[k]:Number(v)}));
+  const toggle=k=>setInputs(p=>({...p,[k]:p[k]?0:1}));
+
+  useEffect(()=>{
+    if(!autoAI) return;
+    if(autoTimer.current) clearTimeout(autoTimer.current);
+    autoTimer.current = setTimeout(()=>runPrediction(false), 900);
+    return ()=>{ if(autoTimer.current) clearTimeout(autoTimer.current); };
+  }, [inputs,provider,apiKey,autoAI]);
+
+  const handlePredict=()=>runPrediction(true);
+
+  function runPrediction(manual=true){
+    setLoading(true);setAiText("");
+    setTimeout(()=>{
+      const p=MODEL.predict(inputs);
+      setProb(p);setLoading(false);
+      if(apiKey){
+        fetchAI(p);
+      } else if(manual){
+        setAiText("Enter your API key to enable AI clinical interpretation, or continue with the risk score only.");
+      }
+    },400);
+  }
+
+  const fetchAI=async(p)=>{
+    if(!apiKey){ setAiText("Unable to run AI; enter your API key."); return; }
+    setStreaming(true);
+    const prompt=`You are a critical care nephrologist. A septic ICU patient assessment:\nAge ${inputs.age}yr, ${inputs.sex?"Male":"Female"}, ${inputs.surgical?"Surgical":"Medical"} admission, Serum Creatinine ${inputs.scr} mg/dL, eGFR proxy (CrMDRD) ${inputs.crmdr}, Sepsis: ${inputs.sepsis?"Yes":"No"}, Mechanical Ventilation: ${inputs.ventilator?"Yes":"No"}, APACHE III: ${inputs.apache3}, SAPS 3: ${inputs.saps3}, RIFLE: ${["None","Risk","Injury","Failure"][inputs.rifle]}, AKIN Stage: ${inputs.akin}.\n\nML model prediction: ${(p*100).toFixed(1)}% dialysis probability — ${riskLabel(p)} RISK.\n\nIn 3-4 concise sentences: (1) which factors drive this risk most, (2) what to monitor closely, (3) one actionable bedside recommendation. Be direct and clinical.`;
+    try{
+      const headers={"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`};
+      let url="https://api.anthropic.com/v1/messages";
+      let body={model:"claude-sonnet-4-20250514",max_tokens:1000,stream:true,messages:[{role:"user",content:prompt}]};
+      if(provider==="openai"){
+        url="https://api.openai.com/v1/chat/completions";
+        body={model:"gpt-4.1-mini",messages:[{role:"user",content:prompt}],stream:true,temperature:0.2,max_tokens:400};
+      }
+      const res=await fetch(url,{method:"POST",headers,body:JSON.stringify(body)});
+      if(!res.ok){
+        let errorMessage = `Request failed: ${res.status} ${res.statusText}`;
+        if(res.status===401||res.status===403){
+          if(provider==="openai" && apiKey.startsWith("AIza")){
+            errorMessage = "Unauthorized: Google API keys (AIza...) are not valid for OpenAI. Use an OpenAI secret key starting with sk- or switch to Anthropic provider.";
+          } else {
+            errorMessage = "Unauthorized: check your API key, provider selection, and whether the key is valid for the selected service.";
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      const reader=res.body.getReader();const dec=new TextDecoder();let buf="";let finished=false;
+      while(!finished){
+        const {done,value}=await reader.read();if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        const lines=buf.split("\n");buf=lines.pop();
+        for(const line of lines){
+          const trimmed=line.trim();
+          if(!trimmed.startsWith("data:")) continue;
+          const d=trimmed.slice(5).trim();
+          if(d==="[DONE]"){finished=true;break;}
+          if(!d) continue;
+          try{
+            const j=JSON.parse(d);
+            const t=j.delta?.text||j.choices?.[0]?.delta?.content||"";
+            if(t) setAiText(x=>x+t);
+          }catch(e){}
+        }
+      }
+    }catch(err){
+      console.error(err);
+      setAiText(err.message || "Clinical interpretation unavailable.");
+    }
+    setStreaming(false);
+  };
+
+  const barData=MODEL.importance.map(f=>({name:FEAT_LABELS[f.feature].replace(/\(.*?\)/,"").trim(),val:+f.importance.toFixed(1),pos:f.positive}));
+
+  const S={
+    header:{background:"linear-gradient(135deg,#0f1f3d 0%,#1a1040 100%)",borderBottom:"1px solid #1e3a5f",padding:"24px 28px 18px"},
+    headerTitle:{margin:0,fontSize:20,fontWeight:"normal",letterSpacing:1,color:"#93c5fd"},
+    headerSub:{margin:"4px 0 0",fontSize:10,color:"#64748b",letterSpacing:2,textTransform:"uppercase"},
+    headerDesc:{margin:"10px 0 0",fontSize:12,color:"#94a3b8",lineHeight:1.6},
+    navBar:{background:"#0d1628",borderBottom:"1px solid #1e2d45",padding:"0 28px",display:"flex"},
+    body:{maxWidth:1100,margin:"0 auto",padding:"24px 28px"},
+    grid2:{display:"grid",gridTemplateColumns:"1fr 360px",gap:22},
+    grid22:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14},
+    grid4:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12},
+    sectionLabel:{fontSize:11,letterSpacing:2,textTransform:"uppercase",color:"#475569",marginBottom:14,display:"block"},
+    fieldGrid:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
+    toggleGrid:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12},
+    checkBox:(active)=>({width:14,height:14,borderRadius:3,background:active?"#3b82f6":"transparent",border:`2px solid ${active?"#3b82f6":"#334155"}`,flexShrink:0,display:"inline-block"}),
+    riskTierRow:{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"6px 10px",borderRadius:6},
+    dot:(c)=>({width:8,height:8,borderRadius:"50%",background:c,flexShrink:0}),
+  };
+
+  const numFields=[
+    {k:"age",label:"Age",unit:"yrs",min:16,max:100,step:1},
+    {k:"scr",label:"Serum Creatinine",unit:"mg/dL",min:0.3,max:10,step:0.1},
+    {k:"crmdr",label:"CrMDRD",unit:"eGFR proxy",min:0.3,max:1.0,step:0.01},
+    {k:"apache3",label:"APACHE III",unit:"score",min:0,max:150,step:1},
+    {k:"saps3",label:"SAPS 3",unit:"score",min:0,max:120,step:1},
+  ];
+  const selFields=[
+    {k:"rifle",label:"RIFLE Category",opts:[["0","0 – No AKI"],["1","1 – Risk"],["2","2 – Injury"],["3","3 – Failure"]]},
+    {k:"akin",label:"AKIN Stage",opts:[["0","Stage 0"],["1","Stage 1"],["2","Stage 2"],["3","Stage 3"]]},
+  ];
+  const toggleFields=[["sex","Male Sex"],["surgical","Surgical Admission"],["sepsis","Sepsis Present"],["ventilator","Mechanical Vent."]];
+
+  return React.createElement('div',{style:{minHeight:"100vh",background:"#0a0f1e"}},
+    // Header
+    React.createElement('div',{style:S.header},
+      React.createElement('div',{style:{maxWidth:1100,margin:"0 auto"}},
+        React.createElement('div',{style:{display:"flex",alignItems:"center",gap:14,marginBottom:4}},
+          React.createElement('div',{style:{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}},"⚕"),
+          React.createElement('div',null,
+            React.createElement('h1',{style:S.headerTitle},"AKI DIALYSIS RISK PREDICTOR"),
+            React.createElement('p',{style:S.headerSub},"Machine Learning · Septic ICU Patients · Logistic Regression")
+          )
+        ),
+        React.createElement('p',{style:S.headerDesc},
+          "Trained on ",React.createElement('strong',{style:{color:"#93c5fd"}},"151 ICU patients"),
+          " · RIFLE & AKIN classification · 5-fold cross-validation · AUC ",
+          React.createElement('strong',{style:{color:"#93c5fd"}},(0.5+MODEL.auc*0.5).toFixed(3))
+        )
+      )
+    ),
+    // Nav
+    React.createElement('div',{style:S.navBar},
+      React.createElement('div',{style:{maxWidth:1100,margin:"0 auto",display:"flex"}},
+        [["predict","🩺 Predict Risk"],["performance","📊 Model Performance"],["data","🔬 Dataset Analysis"]].map(([k,l])=>
+          React.createElement('button',{key:k,className:"tab-btn",onClick:()=>setTab(k),style:{color:tab===k?"#60a5fa":"#64748b",borderBottom:tab===k?"2px solid #60a5fa":"2px solid transparent",fontSize:13}},l)
+        )
+      )
+    ),
+    // Content
+    React.createElement('div',{style:S.body},
+
+      // ── PREDICT TAB ──────────────────────────────────────────────────────────
+      tab==="predict"&&React.createElement('div',{style:S.grid2},
+        // Left inputs
+        React.createElement('div',null,
+          React.createElement('span',{style:S.sectionLabel},"Patient Parameters"),
+          React.createElement('div',{style:S.fieldGrid},
+            ...[...numFields,...selFields].map(f=>
+              React.createElement('div',{key:f.k,className:"field-card"},
+                React.createElement('label',{className:"field-label"},f.label,f.unit&&React.createElement('span',{style:{color:"#334155",marginLeft:6}},"(",f.unit,")")),
+                f.opts
+                  ?React.createElement('select',{value:inputs[f.k],onChange:e=>set(f.k,e.target.value),className:"field-input"},
+                    f.opts.map(([v,l])=>React.createElement('option',{key:v,value:v},l))
+                  )
+                  :React.createElement('input',{type:"number",value:inputs[f.k],min:f.min,max:f.max,step:f.step,onChange:e=>set(f.k,e.target.value),className:"field-input"})
+              )
+            )
+          ),
+          React.createElement('div',{style:S.toggleGrid},
+            ...toggleFields.map(([k,l])=>
+              React.createElement('button',{key:k,className:`toggle-btn${inputs[k]?" active":""}`,onClick:()=>toggle(k)},
+                React.createElement('span',{style:S.checkBox(inputs[k])}),l
+              )
+            )
+          ),
+          React.createElement('div',{style:{marginTop:16,display:"grid",gap:10}},
+            React.createElement('div',{className:"field-card"},
+              React.createElement('label',{className:"field-label"},"Chatbot Provider"),
+              React.createElement('select',{value:provider,onChange:e=>setProvider(e.target.value),className:"field-input"},
+                React.createElement('option',{value:"anthropic"},"Anthropic / Claude"),
+                React.createElement('option',{value:"openai"},"OpenAI / Gemini-like")
+              )
+            ),
+            React.createElement('div',{className:"field-card"},
+              React.createElement('label',{className:"field-label"},"API Key"),
+              React.createElement('input',{type:"password",value:apiKey,onChange:e=>setApiKey(e.target.value),className:"field-input",placeholder:"Paste API key here"})
+            ),
+            React.createElement('label',{style:{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#94a3b8"}},
+              React.createElement('input',{type:"checkbox",checked:autoAI,onChange:e=>setAutoAI(e.target.checked)}),
+              "Auto-run AI when inputs change"
+            )
+          ),
+          React.createElement('button',{className:"predict-btn",onClick:handlePredict,disabled:loading,style:{marginTop:16}},
+            loading?"⟳  Computing...":"▶  PREDICT DIALYSIS RISK"
+          )
+        ),
+        // Right result panel
+        React.createElement('div',{style:{display:"flex",flexDirection:"column",gap:14}},
+          // Gauge panel
+          React.createElement('div',{className:"panel",style:{textAlign:"center",minHeight:200}},
+            prob===null
+              ?React.createElement('div',{style:{color:"#334155",paddingTop:36}},
+                  React.createElement('div',{style:{fontSize:32,marginBottom:10}},"⚕"),
+                  React.createElement('p',{style:{fontSize:13}},"Enter parameters and click Predict")
+                )
+              :React.createElement('div',{className:"fade-in"},
+                  React.createElement(Gauge,{prob}),
+                  React.createElement('div',{style:{fontSize:22,fontWeight:"bold",color:riskColor(prob),letterSpacing:2,marginTop:6}},[riskLabel(prob)].join("")),
+                  React.createElement('div',{style:S.grid22,marginTop:12},
+                    [["Sensitivity","83.3%"],["Specificity","72.7%"],["PPV",`${(MODEL.metrics.ppv*100).toFixed(0)}%`],["NPV",`${(MODEL.metrics.npv*100).toFixed(0)}%`]].map(([k,v])=>
+                      React.createElement('div',{key:k,className:"metric-card"},
+                        React.createElement('div',{style:{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:1}},[k].join("")),
+                        React.createElement('div',{style:{fontSize:16,color:"#93c5fd",marginTop:2}},[v].join(""))
+                      )
+                    )
+                  )
+                )
+          ),
+          // AI explanation
+          React.createElement('div',{className:"panel",style:{flex:1}},
+            React.createElement('div',{style:{fontSize:10,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:10,display:"flex",alignItems:"center",gap:8}},
+              React.createElement('span',{style:{width:6,height:6,borderRadius:"50%",background:streaming?"#22c55e":"#334155",display:"inline-block",boxShadow:streaming?"0 0 8px #22c55e":"none"}}),
+              "AI Clinical Interpretation"
+            ),
+            aiText
+              ?React.createElement('p',{style:{fontSize:12,lineHeight:1.75,color:"#94a3b8",margin:0}},[aiText].join(""),streaming&&React.createElement('span',{className:"streaming-cursor",style:{opacity:0.5}},"▋"))
+              :React.createElement('p',{style:{fontSize:12,color:"#334155",fontStyle:"italic",margin:0}},"Clinical interpretation will appear after prediction…")
+          ),
+          // Risk tiers
+          prob!==null&&React.createElement('div',{className:"panel fade-in"},
+            React.createElement('div',{style:{fontSize:10,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:10}},"Risk Stratification"),
+            [["LOW","< 20%","#22c55e","Monitor standard"],["MODERATE","20–50%","#f59e0b","Nephrology consult"],["HIGH","> 50%","#ef4444","Prepare for RRT"]].map(([l,r,c,a])=>{
+              const active=prob&&((l==="LOW"&&prob<0.2)||(l==="MODERATE"&&prob>=0.2&&prob<0.5)||(l==="HIGH"&&prob>=0.5));
+              return React.createElement('div',{key:l,style:{...S.riskTierRow,background:active?c+"15":"transparent",border:`1px solid ${active?c+"40":"transparent"}`}},
+                React.createElement('span',{style:S.dot(c)}),
+                React.createElement('span',{style:{fontSize:11,color:c,fontWeight:"bold",width:72}},[l].join("")),
+                React.createElement('span',{style:{fontSize:10,color:"#475569",width:56}},[r].join("")),
+                React.createElement('span',{style:{fontSize:10,color:"#64748b"}},[a].join(""))
+              );
+            })
+          )
+        )
+      ),
+
+      // ── PERFORMANCE TAB ──────────────────────────────────────────────────────
+      tab==="performance"&&React.createElement('div',null,
+        React.createElement('div',{style:{...S.grid4,marginBottom:20}},
+          [["AUC-ROC",(0.5+MODEL.auc*0.5).toFixed(3),"#8b5cf6"],["Sensitivity",`${(MODEL.metrics.sens*100).toFixed(1)}%`,"#22c55e"],["Specificity",`${(MODEL.metrics.spec*100).toFixed(1)}%`,"#3b82f6"],["PPV",`${(MODEL.metrics.ppv*100).toFixed(1)}%`,"#f59e0b"],["NPV",`${(MODEL.metrics.npv*100).toFixed(1)}%`,"#06b6d4"],["N Total","151","#64748b"],["Dialysis+","12 (7.9%)","#ef4444"],["Dialysis-","139 (92.1%)","#22c55e"]].map(([k,v,c])=>
+            React.createElement('div',{key:k,style:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,padding:"14px 16px",borderTop:`3px solid ${c}`}},
+              React.createElement('div',{style:{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:4}},[k].join("")),
+              React.createElement('div',{style:{fontSize:22,color:c,fontWeight:"bold"}},[v].join(""))
+            )
+          )
+        ),
+        React.createElement('div',{style:S.grid22},
+          // Confusion matrix
+          React.createElement('div',null,
+            React.createElement('h3',{style:{fontSize:12,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:12}},"Confusion Matrix"),
+            React.createElement('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxWidth:260}},
+              [["TP",MODEL.metrics.TP,"#22c55e","True Positive"],["FP",MODEL.metrics.FP,"#f97316","False Positive"],["FN",MODEL.metrics.FN,"#f97316","False Negative"],["TN",MODEL.metrics.TN,"#22c55e","True Negative"]].map(([k,v,c,l])=>
+                React.createElement('div',{key:k,style:{background:c+"22",border:`1px solid ${c}40`,borderRadius:8,padding:"12px",textAlign:"center"}},
+                  React.createElement('div',{style:{fontSize:9,color:"#475569",marginBottom:4}},[l].join("")),
+                  React.createElement('div',{style:{fontSize:28,color:c,fontWeight:"bold"}},[v].join(""))
+                )
+              )
+            )
+          ),
+          // Feature importance chart
+          React.createElement('div',null,
+            React.createElement('h3',{style:{fontSize:12,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:12}},"Feature Importance"),
+            React.createElement(ResponsiveContainer,{width:"100%",height:340},
+              React.createElement(BarChart,{data:barData,layout:"vertical",margin:{left:20,right:24}},
+                React.createElement(XAxis,{type:"number",tick:{fill:"#475569",fontSize:10},tickFormatter:v=>`${v}%`}),
+                React.createElement(YAxis,{type:"category",dataKey:"name",tick:{fill:"#94a3b8",fontSize:10},width:120}),
+                React.createElement(Tooltip,{contentStyle:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,color:"#e2e8f0",fontSize:11},formatter:(v,n,p)=>[`${v}%`,p.payload.pos?"Increases risk":"Decreases risk"]}),
+                React.createElement(Bar,{dataKey:"val",radius:[0,4,4,0]},
+                  barData.map((d,i)=>React.createElement(Cell,{key:i,fill:d.pos?"#ef444460":"#22c55e60",stroke:d.pos?"#ef4444":"#22c55e",strokeWidth:1}))
+                )
+              )
+            ),
+            React.createElement('div',{style:{display:"flex",gap:16,marginTop:6}},
+              React.createElement('div',{style:{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#64748b"}},React.createElement('span',{style:{width:10,height:10,background:"#ef444460",border:"1px solid #ef4444",borderRadius:2,display:"inline-block"}})," Increases risk"),
+              React.createElement('div',{style:{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#64748b"}},React.createElement('span',{style:{width:10,height:10,background:"#22c55e60",border:"1px solid #22c55e",borderRadius:2,display:"inline-block"}})," Decreases risk")
+            )
+          )
+        ),
+        // Methodology
+        React.createElement('div',{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginTop:20}},
+          [["Study Design","Retrospective observational, n=151 ICU patients"],["Validation","Split-sample (70/30) + 5-fold cross-validation"],["Classification","RIFLE (0/R/I/F) + AKIN staging (0–3)"],["Endpoint","CRRT / SLED / HD requirement"]].map(([k,v])=>
+            React.createElement('div',{key:k,style:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,padding:"12px"}},
+              React.createElement('div',{style:{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:6}},[k].join("")),
+              React.createElement('div',{style:{fontSize:11,color:"#94a3b8",lineHeight:1.6}},[v].join(""))
+            )
+          )
+        )
+      ),
+
+      // ── DATASET TAB ─────────────────────────────────────────────────────────
+      tab==="data"&&React.createElement('div',null,
+        React.createElement('h3',{style:{...S.sectionLabel,marginBottom:16}},"Dataset Overview — 151 Patients"),
+        React.createElement('div',{style:{...S.grid4,marginBottom:22}},
+          [
+            ["Mean Age",`${(DATASET.reduce((s,d)=>s+d.age,0)/DATASET.length).toFixed(1)} yrs`,"#93c5fd"],
+            ["Sepsis",`${(DATASET.filter(d=>d.sepsis).length/DATASET.length*100).toFixed(0)}%`,"#22c55e"],
+            ["Ventilated",`${(DATASET.filter(d=>d.ventilator).length/DATASET.length*100).toFixed(0)}%`,"#f59e0b"],
+            ["RIFLE Failure",`${DATASET.filter(d=>d.rifle===3).length} pts`,"#ef4444"],
+            ["Mean APACHE III",`${(DATASET.reduce((s,d)=>s+d.apache3,0)/DATASET.length).toFixed(1)}`,"#8b5cf6"],
+            ["Mean SAPS 3",`${(DATASET.reduce((s,d)=>s+d.saps3,0)/DATASET.length).toFixed(1)}`,"#06b6d4"],
+            ["Mean SCr",`${(DATASET.reduce((s,d)=>s+d.scr,0)/DATASET.length).toFixed(2)} mg/dL`,"#f97316"],
+            ["AKIN Stage 3",`${DATASET.filter(d=>d.akin===3).length} pts`,"#ef4444"],
+          ].map(([k,v,c])=>
+            React.createElement('div',{key:k,style:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,padding:"14px 16px",borderTop:`3px solid ${c}`}},
+              React.createElement('div',{style:{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:4}},[k].join("")),
+              React.createElement('div',{style:{fontSize:20,color:c,fontWeight:"bold"}},[v].join(""))
+            )
+          )
+        ),
+        React.createElement('div',{style:S.grid22},
+          // RIFLE chart
+          React.createElement('div',null,
+            React.createElement('h4',{style:{fontSize:11,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:10}},"RIFLE Distribution"),
+            React.createElement(ResponsiveContainer,{width:"100%",height:200},
+              React.createElement(BarChart,{data:[{name:"No AKI",n:DATASET.filter(d=>d.rifle===0).length},{name:"Risk (R)",n:DATASET.filter(d=>d.rifle===1).length},{name:"Injury (I)",n:DATASET.filter(d=>d.rifle===2).length},{name:"Failure (F)",n:DATASET.filter(d=>d.rifle===3).length}]},
+                React.createElement(XAxis,{dataKey:"name",tick:{fill:"#64748b",fontSize:11}}),
+                React.createElement(YAxis,{tick:{fill:"#64748b",fontSize:11}}),
+                React.createElement(Tooltip,{contentStyle:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,color:"#e2e8f0"},formatter:v=>[`${v} patients`]}),
+                React.createElement(Bar,{dataKey:"n",radius:[4,4,0,0]},
+                  [0,1,2,3].map(i=>React.createElement(Cell,{key:i,fill:["#22c55e","#f59e0b","#f97316","#ef4444"][i]}))
+                )
+              )
+            )
+          ),
+          // Dialysis by RIFLE chart
+          React.createElement('div',null,
+            React.createElement('h4',{style:{fontSize:11,letterSpacing:2,color:"#475569",textTransform:"uppercase",marginBottom:10}},"Dialysis Outcomes by RIFLE"),
+            React.createElement(ResponsiveContainer,{width:"100%",height:200},
+              React.createElement(BarChart,{data:[0,1,2,3].map(r=>({name:["No AKI","Risk","Injury","Failure"][r],total:DATASET.filter(d=>d.rifle===r).length,dialysis:DATASET.filter(d=>d.rifle===r&&d.dialysis===1).length}))},
+                React.createElement(XAxis,{dataKey:"name",tick:{fill:"#64748b",fontSize:11}}),
+                React.createElement(YAxis,{tick:{fill:"#64748b",fontSize:11}}),
+                React.createElement(Tooltip,{contentStyle:{background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:8,color:"#e2e8f0"}}),
+                React.createElement(Bar,{dataKey:"total",name:"Total",fill:"#1e3a5f",radius:[4,4,0,0]}),
+                React.createElement(Bar,{dataKey:"dialysis",name:"Dialysis",fill:"#ef4444",radius:[4,4,0,0]})
+              )
+            )
+          )
+        ),
+        // Dialysis patients table
+        React.createElement('div',{style:{marginTop:20,background:"#0f1e35",border:"1px solid #1e3a5f",borderRadius:10,padding:16}},
+          React.createElement('div',{style:{fontSize:10,color:"#475569",letterSpacing:2,textTransform:"uppercase",marginBottom:10}},"Dialysis Patients (n=12)"),
+          React.createElement('div',{style:{overflowX:"auto"}},
+            React.createElement('table',null,
+              React.createElement('thead',null,React.createElement('tr',null,...["Age","Sex","SCr","APACHE III","SAPS 3","RIFLE","AKIN","Sepsis","Vent"].map(h=>React.createElement('th',{key:h},[h].join(""))))),
+              React.createElement('tbody',null,
+                ...DATASET.filter(d=>d.dialysis===1).map((d,i)=>
+                  React.createElement('tr',{key:i},
+                    ...[d.age,d.sex?"M":"F",d.scr,d.apache3,d.saps3,["–","R","I","F"][d.rifle],d.akin,d.sepsis?"Y":"N",d.ventilator?"Y":"N"].map((v,j)=>React.createElement('td',{key:j},[v].join("")))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    React.createElement('div',{className:"disclaimer"},"FOR RESEARCH / EDUCATIONAL USE ONLY · NOT FOR STANDALONE CLINICAL DECISION-MAKING · n=151 ICU PATIENTS")
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
